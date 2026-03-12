@@ -167,6 +167,31 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .file-type-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.65rem;font-family:var(--fd);letter-spacing:.05em;text-transform:uppercase}
 .file-type-badge--pdf{background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)}
 .file-type-badge--json{background:rgba(74,222,128,.15);color:var(--health);border:1px solid rgba(74,222,128,.3)}
+.builder{display:flex;flex-direction:column;gap:14px}
+.builder__row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.builder__row--3{grid-template-columns:1fr 1fr 1fr}
+.builder__field{display:flex;flex-direction:column;gap:3px}
+.builder__field--full{grid-column:1/-1}
+.builder__label{font-size:.7rem;color:var(--textM);text-transform:uppercase;letter-spacing:.06em;font-family:var(--fd)}
+.builder__input{padding:6px 10px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;color:var(--text);font-family:var(--fb);font-size:.85rem}
+.builder__input:focus{outline:none;border-color:var(--accent)}
+.builder__input--sm{width:60px;text-align:center;font-family:var(--fd);font-weight:600}
+.builder__select{padding:6px 10px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;color:var(--text);font-family:var(--fb);font-size:.85rem}
+.builder__abilities{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.builder__ab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px}
+.builder__ab-name{font-size:.58rem;color:var(--textM);text-transform:uppercase;letter-spacing:.1em}
+.builder__ab-input{width:40px;padding:2px;background:transparent;border:1px solid var(--brd);border-radius:3px;color:var(--text);font-family:var(--fd);font-size:.95rem;text-align:center;font-weight:600}
+.builder__ab-input:focus{outline:none;border-color:var(--accent)}
+.builder__ab-mod{font-size:.68rem;color:var(--accent)}
+.builder__section-title{font-family:var(--fd);font-size:.78rem;color:var(--accent);margin-top:4px;letter-spacing:.03em}
+.builder__equip-row{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.builder__equip-row input{flex:1}
+.builder__equip-row .builder__input--sm{width:40px;flex:none}
+.builder__add-btn{font-size:.72rem;color:var(--accent);background:none;border:1px dashed var(--brd);border-radius:4px;padding:4px 10px;cursor:pointer;font-family:var(--fd);transition:all .2s}
+.builder__add-btn:hover{border-color:var(--accent);background:var(--glow)}
+.builder__remove-btn{background:none;border:none;color:var(--danger);cursor:pointer;font-size:.8rem;padding:2px 6px;opacity:.6}
+.builder__remove-btn:hover{opacity:1}
+@media(max-width:400px){.builder__abilities{grid-template-columns:repeat(3,1fr)}.builder__row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -865,6 +890,158 @@ function SuggestionCard({ s }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Character Builder Form
+// ═══════════════════════════════════════════════════════════════════════════
+const CLASS_OPTIONS = [
+  { name: "Barbarian", hitDie: 12 }, { name: "Fighter", hitDie: 10 }, { name: "Paladin", hitDie: 10 },
+  { name: "Ranger", hitDie: 10 }, { name: "Bard", hitDie: 8 }, { name: "Cleric", hitDie: 8 },
+  { name: "Druid", hitDie: 8 }, { name: "Monk", hitDie: 8 }, { name: "Rogue", hitDie: 8 },
+  { name: "Warlock", hitDie: 8 }, { name: "Artificer", hitDie: 8 }, { name: "Sorcerer", hitDie: 6 },
+  { name: "Wizard", hitDie: 6 }, { name: "Blood Hunter", hitDie: 10 },
+];
+
+function CharacterBuilder({ onComplete, onCancel }) {
+  const [f, setF] = useState({
+    name: "", race: "Human", className: "Fighter", level: 1,
+    str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+    hp: 10, ac: 10, speed: 30,
+    weapons: [{ name: "", damage: "", damageType: "Slashing", qty: 1 }],
+    features: [{ name: "", desc: "", uses: "", recharge: "long" }],
+    potions: 0,
+  });
+
+  const u = (key, val) => setF(p => ({ ...p, [key]: val }));
+  const classInfo = CLASS_OPTIONS.find(c => c.name === f.className) || CLASS_OPTIONS[1];
+
+  const addWeapon = () => setF(p => ({ ...p, weapons: [...p.weapons, { name: "", damage: "", damageType: "Slashing", qty: 1 }] }));
+  const removeWeapon = (i) => setF(p => ({ ...p, weapons: p.weapons.filter((_, j) => j !== i) }));
+  const updateWeapon = (i, key, val) => setF(p => ({ ...p, weapons: p.weapons.map((w, j) => j === i ? { ...w, [key]: val } : w) }));
+
+  const addFeature = () => setF(p => ({ ...p, features: [...p.features, { name: "", desc: "", uses: "", recharge: "long" }] }));
+  const removeFeature = (i) => setF(p => ({ ...p, features: p.features.filter((_, j) => j !== i) }));
+  const updateFeature = (i, key, val) => setF(p => ({ ...p, features: p.features.map((ft, j) => j === i ? { ...ft, [key]: val } : ft) }));
+
+  const handleBuild = () => {
+    const abilityScores = {};
+    for (const [key, ab] of [["str","strength"],["dex","dexterity"],["con","constitution"],["int","intelligence"],["wis","wisdom"],["cha","charisma"]]) {
+      const score = parseInt(f[key], 10) || 10;
+      abilityScores[ab] = { name: ab, score, modifier: computeModifier(score) };
+    }
+    const level = parseInt(f.level, 10) || 1;
+    const maxHP = parseInt(f.hp, 10) || 10;
+
+    const equipment = f.weapons.filter(w => w.name.trim()).map(w => ({
+      name: w.name.trim(), type: "weapon", equipped: true,
+      quantity: parseInt(w.qty, 10) || 1,
+      damage: w.damage || undefined, damageType: w.damageType || "Slashing",
+    }));
+    if (parseInt(f.potions, 10) > 0) {
+      equipment.push({ name: "Potion of Healing", type: "item", equipped: false, quantity: parseInt(f.potions, 10) });
+    }
+
+    const features = f.features.filter(ft => ft.name.trim()).map(ft => ({
+      name: ft.name.trim(), source: f.className, description: ft.desc || ft.name,
+      usesTotal: ft.uses ? parseInt(ft.uses, 10) : undefined,
+      usesRemaining: ft.uses ? parseInt(ft.uses, 10) : undefined,
+      rechargeOn: ft.uses ? ft.recharge : undefined,
+    }));
+
+    const character = {
+      id: crypto.randomUUID(), name: f.name || "Unnamed Hero", race: f.race || "Unknown",
+      classes: [{ name: f.className, level, subclass: undefined, hitDie: classInfo.hitDie }],
+      level, abilityScores,
+      hitPoints: { max: maxHP, current: maxHP, temporary: 0 },
+      armorClass: parseInt(f.ac, 10) || 10, speed: parseInt(f.speed, 10) || 30,
+      proficiencyBonus: computeProfBonus(level),
+      spellSlots: [], spells: [], equipment, features,
+      skills: [], conditions: [], inspiration: false,
+      deathSaves: { successes: 0, failures: 0 },
+    };
+    onComplete(character);
+  };
+
+  return (
+    <div className="builder">
+      <div className="builder__row">
+        <div className="builder__field builder__field--full">
+          <span className="builder__label">Character Name</span>
+          <input className="builder__input" value={f.name} onChange={e => u("name", e.target.value)} placeholder="e.g. ObojimaBarbarian" />
+        </div>
+      </div>
+      <div className="builder__row builder__row--3">
+        <div className="builder__field">
+          <span className="builder__label">Race / Species</span>
+          <input className="builder__input" value={f.race} onChange={e => u("race", e.target.value)} placeholder="Elf" />
+        </div>
+        <div className="builder__field">
+          <span className="builder__label">Class</span>
+          <select className="builder__select" value={f.className} onChange={e => u("className", e.target.value)}>
+            {CLASS_OPTIONS.map(c => <option key={c.name} value={c.name}>{c.name} (d{c.hitDie})</option>)}
+          </select>
+        </div>
+        <div className="builder__field">
+          <span className="builder__label">Level</span>
+          <input className="builder__input builder__input--sm" type="number" min={1} max={20} value={f.level} onChange={e => u("level", e.target.value)} />
+        </div>
+      </div>
+
+      <span className="builder__section-title">Ability Scores</span>
+      <div className="builder__abilities">
+        {[["str","STR"],["dex","DEX"],["con","CON"],["int","INT"],["wis","WIS"],["cha","CHA"]].map(([key, label]) => (
+          <div key={key} className="builder__ab">
+            <span className="builder__ab-name">{label}</span>
+            <input className="builder__ab-input" type="number" min={1} max={30} value={f[key]} onChange={e => u(key, e.target.value)} />
+            <span className="builder__ab-mod">{((v) => (v >= 0 ? "+" : "") + v)(computeModifier(parseInt(f[key],10)||10))}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="builder__row builder__row--3">
+        <div className="builder__field"><span className="builder__label">Max HP</span><input className="builder__input builder__input--sm" type="number" min={1} value={f.hp} onChange={e => u("hp", e.target.value)} /></div>
+        <div className="builder__field"><span className="builder__label">AC</span><input className="builder__input builder__input--sm" type="number" min={1} value={f.ac} onChange={e => u("ac", e.target.value)} /></div>
+        <div className="builder__field"><span className="builder__label">Speed (ft)</span><input className="builder__input builder__input--sm" type="number" min={0} value={f.speed} onChange={e => u("speed", e.target.value)} /></div>
+      </div>
+
+      <span className="builder__section-title">Weapons &amp; Equipment</span>
+      {f.weapons.map((w, i) => (
+        <div key={i} className="builder__equip-row">
+          <input className="builder__input" value={w.name} onChange={e => updateWeapon(i,"name",e.target.value)} placeholder="Weapon name" />
+          <input className="builder__input builder__input--sm" value={w.damage} onChange={e => updateWeapon(i,"damage",e.target.value)} placeholder="1d12" style={{width:54}} />
+          <select className="builder__select" value={w.damageType} onChange={e => updateWeapon(i,"damageType",e.target.value)} style={{width:80,fontSize:".72rem",padding:"4px"}}>
+            <option>Slashing</option><option>Piercing</option><option>Bludgeoning</option>
+          </select>
+          <input className="builder__input builder__input--sm" type="number" min={1} value={w.qty} onChange={e => updateWeapon(i,"qty",e.target.value)} style={{width:36}} title="Qty" />
+          {f.weapons.length > 1 && <button className="builder__remove-btn" onClick={() => removeWeapon(i)}>✕</button>}
+        </div>
+      ))}
+      <button className="builder__add-btn" onClick={addWeapon}>+ Add weapon</button>
+      <div className="builder__row">
+        <div className="builder__field"><span className="builder__label">Healing Potions</span><input className="builder__input builder__input--sm" type="number" min={0} value={f.potions} onChange={e => u("potions", e.target.value)} /></div>
+      </div>
+
+      <span className="builder__section-title">Features &amp; Abilities</span>
+      <p style={{fontSize:".7rem",color:"var(--textM)"}}>Add class features, racial traits, and feats with limited uses (Rage, Action Surge, etc.)</p>
+      {f.features.map((ft, i) => (
+        <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+          <input className="builder__input" value={ft.name} onChange={e => updateFeature(i,"name",e.target.value)} placeholder="Feature name" style={{flex:2}} />
+          <input className="builder__input builder__input--sm" value={ft.uses} onChange={e => updateFeature(i,"uses",e.target.value)} placeholder="Uses" style={{width:44}} title="Uses per rest (leave blank if passive)" />
+          <select className="builder__select" value={ft.recharge} onChange={e => updateFeature(i,"recharge",e.target.value)} style={{width:68,fontSize:".7rem",padding:"4px"}}>
+            <option value="short">Short</option><option value="long">Long</option>
+          </select>
+          {f.features.length > 1 && <button className="builder__remove-btn" onClick={() => removeFeature(i)}>✕</button>}
+        </div>
+      ))}
+      <button className="builder__add-btn" onClick={addFeature}>+ Add feature</button>
+
+      <div className="acts" style={{marginTop:8}}>
+        <button className="btn btn--p" onClick={handleBuild} disabled={!f.name.trim()}>Create Character</button>
+        <button className="btn btn--s" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [char, setChar] = useState(null);
   const [gs, setGs] = useState(null);
@@ -873,6 +1050,7 @@ function App() {
   const [importErrors, setImportErrors] = useState([]);
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteContent, setPasteContent] = useState("");
+  const [builderMode, setBuilderMode] = useState(false);
   const fileRef = useRef(null);
 
   const loadChar = useCallback((data) => {
@@ -946,6 +1124,14 @@ function App() {
     setPdfReview(null);
   }, []);
 
+  const handleBuilderComplete = useCallback((character) => {
+    setChar(character);
+    setGs(createDefaultGameState(character));
+    setResult(null);
+    setBuilderMode(false);
+    setImportErrors([]);
+  }, []);
+
   const hpPct = char && char.hitPoints.max > 0 && gs ? Math.round((gs.currentHP / char.hitPoints.max) * 100) : 100;
   const hpColor = hpPct > 50 ? "var(--health)" : hpPct > 25 ? "var(--warn)" : "var(--danger)";
 
@@ -1000,6 +1186,8 @@ function App() {
                     <button className="btn btn--s" onClick={cancelPdfImport}>Cancel</button>
                   </div>
                 </div>
+              ) : builderMode ? (
+                <CharacterBuilder onComplete={handleBuilderComplete} onCancel={() => setBuilderMode(false)} />
               ) : !pasteMode ? (
                 <>
                   <div className={`dz`}
@@ -1012,6 +1200,9 @@ function App() {
                     <p className="dz__h">Supports <span className="file-type-badge file-type-badge--pdf">PDF</span> and <span className="file-type-badge file-type-badge--json">JSON</span> from D&amp;D Beyond</p>
                     <input ref={fileRef} type="file" accept=".json,.pdf" className="sr-only"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                  </div>
+                  <div className="acts">
+                    <button className="btn btn--p" onClick={() => setBuilderMode(true)} style={{flex:"1 1 100%"}}>✏️ Build Manually</button>
                   </div>
                   <div className="acts">
                     <button className="btn btn--s" onClick={() => setPasteMode(true)}>Paste JSON</button>
