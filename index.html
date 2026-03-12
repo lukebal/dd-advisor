@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="description" content="D&D Advisor – Real-time strategic guidance for Dungeons & Dragons gameplay"/>
+<meta name="theme-color" content="#0d0d0f"/>
+<title>D&D Advisor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐉</text></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0d0d0f;--bgE:#16161a;--surf:#1e1e24;--surfD:#12121a;--surfH:#26262e;--brd:#2a2a35;--brdL:#3a3a48;--text:#e8dcc8;--textD:#a09888;--textM:#6a6460;--accent:#c8a45a;--accentD:#9a7d3e;--glow:rgba(200,164,90,.15);--health:#4ade80;--warn:#f59e0b;--danger:#ef4444;--info:#60a5fa;--muted:#6b7280;--fd:'Cinzel',serif;--fb:'Crimson Pro',serif;--fm:'Courier New',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{font-family:var(--fb);font-weight:400;color:var(--text);background:var(--bg);line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(200,164,90,.03)0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(100,80,50,.04)0%,transparent 50%);pointer-events:none;z-index:0}
+#root{position:relative;z-index:1}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+/* Layout */
+.app{min-height:100vh;display:flex;flex-direction:column}
+.hdr{padding:20px 16px;border-bottom:1px solid var(--brd);background:linear-gradient(180deg,var(--bgE),var(--bg));text-align:center}
+.hdr h1{font-family:var(--fd);font-size:1.8rem;font-weight:700;color:var(--accent);letter-spacing:.05em;text-shadow:0 0 30px var(--glow)}
+.hdr p{font-size:.88rem;color:var(--textD);margin-top:4px;font-style:italic}
+.main{flex:1;padding:16px;display:flex;flex-direction:column;gap:20px;max-width:1200px;width:100%;margin:0 auto}
+.col{display:flex;flex-direction:column;gap:20px}
+.ftr{padding:14px;border-top:1px solid var(--brd);text-align:center;font-size:.78rem;color:var(--textM)}
+.ftr a{color:var(--accentD);text-decoration:none}.ftr a:hover{color:var(--accent);text-decoration:underline}
+@media(min-width:768px){.main{flex-direction:row;padding:24px}.col{flex:1;min-width:0}.col--in{max-width:440px}.hdr h1{font-size:2.2rem}}
+@media(min-width:1024px){.main{gap:32px}.col--in{max-width:480px}}
+
+/* Card */
+.card{background:var(--surf);border:1px solid var(--brd);border-radius:12px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+.stitle{font-family:var(--fd);font-size:1.05rem;font-weight:600;color:var(--accent);letter-spacing:.04em;margin-bottom:14px}
+.shdr{display:flex;justify-content:space-between;align-items:center}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 16px;border:1px solid var(--brd);border-radius:8px;font-family:var(--fd);font-size:.82rem;font-weight:500;cursor:pointer;transition:all .2s;background:var(--surf);color:var(--text)}
+.btn:hover:not(:disabled){background:var(--surfH);border-color:var(--brdL)}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn--p{background:linear-gradient(135deg,var(--accentD),var(--accent));color:var(--bg);border-color:var(--accent);font-weight:600}
+.btn--p:hover:not(:disabled){box-shadow:0 0 20px var(--glow)}
+.btn--s{background:transparent;border-color:var(--brdL);color:var(--textD)}
+.btn--a{background:transparent;border-color:var(--accentD);color:var(--accent)}
+.btn--g{background:transparent;border:none;color:var(--textD);padding:4px 8px;font-family:var(--fd);font-size:.82rem;cursor:pointer}
+.btn--g:hover{color:var(--text)}
+.btn--t{padding:2px 8px;font-size:.72rem;font-family:var(--fb);border-radius:4px}
+.btn--hl{border-color:var(--health);color:var(--health)}
+.btn--lg{padding:14px 28px;font-size:1rem;width:100%;margin-top:14px}
+
+/* Drop zone */
+.dz{border:2px dashed var(--brdL);border-radius:8px;padding:40px 16px;text-align:center;cursor:pointer;transition:all .3s;background:var(--surfD)}
+.dz:hover,.dz--a{border-color:var(--accent);background:var(--glow)}
+.dz__i{font-size:2.5rem;margin-bottom:8px}.dz__t{font-family:var(--fd);font-size:.92rem}.dz__h{font-size:.78rem;color:var(--textM);margin-top:4px}
+.acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.acts .btn{flex:1;min-width:130px}
+.paste-area{width:100%;padding:12px;background:var(--surfD);border:1px solid var(--brd);border-radius:8px;color:var(--text);font-family:var(--fm);font-size:.8rem;resize:vertical;line-height:1.5}
+.paste-area:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--glow)}
+.error-box{margin-top:14px;padding:14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px}
+.error-box__title{color:var(--danger);font-family:var(--fd);font-size:.85rem}
+.error-box__list{margin-top:8px;padding-left:16px;font-size:.82rem;color:var(--textD)}
+.error-box__list li{margin-bottom:4px}
+
+/* Character Summary */
+.summary__hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.summary__name{font-family:var(--fd);font-size:1.3rem;font-weight:700;color:var(--accent)}
+.summary__cls{font-size:.82rem;color:var(--textD);margin-top:2px}
+.summary__stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.pill{display:flex;flex-direction:column;align-items:center;padding:4px 8px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;min-width:50px}
+.pill__l{font-size:.62rem;color:var(--textM);text-transform:uppercase;letter-spacing:.08em}
+.pill__v{font-family:var(--fd);font-size:.88rem;font-weight:600}
+.abs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:14px}
+.ab{display:flex;flex-direction:column;align-items:center;padding:4px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px}
+.ab__n{font-size:.58rem;color:var(--textM);text-transform:uppercase;letter-spacing:.1em}
+.ab__s{font-family:var(--fd);font-size:.92rem;font-weight:600}
+.ab__m{font-size:.68rem;color:var(--accent)}
+
+/* Status Input */
+.sg{margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--brd)}.sg:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none}
+.sg__t{font-family:var(--fd);font-size:.82rem;color:var(--textD);margin-bottom:8px;letter-spacing:.03em}
+.sl{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:var(--textD);margin-bottom:8px}
+.sv{font-family:var(--fd);font-weight:600;font-size:1rem}
+.hps{width:100%;height:8px;-webkit-appearance:none;appearance:none;border-radius:4px;outline:none;cursor:pointer}
+.hps::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--text);border:2px solid var(--accent);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.hps::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:var(--text);border:2px solid var(--accent);cursor:grab}
+.hpq{display:flex;gap:4px;margin-top:8px;justify-content:center}
+.tgl{display:flex;align-items:center;gap:8px;font-size:.88rem;cursor:pointer}
+.tgl input{display:none}
+.tsw{position:relative;width:40px;height:22px;background:var(--surfD);border:1px solid var(--brd);border-radius:11px;transition:all .2s}
+.tsw::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:var(--textM);border-radius:50%;transition:all .2s}
+.tgl input:checked+.tsw{background:var(--accentD);border-color:var(--accent)}.tgl input:checked+.tsw::after{left:20px;background:var(--accent)}
+.cbd{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.ni{width:60px;padding:4px 8px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;color:var(--text);font-family:var(--fd);font-size:.88rem;text-align:center}
+.ni:focus{outline:none;border-color:var(--accent)}
+.cg{display:flex;flex-wrap:wrap;gap:4px}
+.ct{padding:3px 10px;border:1px solid var(--brd);border-radius:999px;background:var(--surfD);color:var(--textD);font-size:.7rem;cursor:pointer;transition:all .15s;text-transform:capitalize;font-family:var(--fb)}
+.ct:hover{border-color:var(--brdL);color:var(--text)}
+.ct--a{background:rgba(239,68,68,.15);border-color:var(--danger);color:var(--danger)}
+.ssg{display:flex;flex-direction:column;gap:8px}
+.ssr{display:flex;align-items:center;gap:8px}
+.ssl{font-size:.72rem;color:var(--textM);min-width:36px}
+.ssp{display:flex;gap:4px}
+.sp{width:18px;height:18px;border-radius:50%;border:1px solid var(--brdL);cursor:pointer;transition:all .15s;background:var(--surfD)}
+.sp--a{background:var(--info);border-color:var(--info)}
+.sp--u{background:var(--surfD)}
+.ssc{font-size:.7rem;color:var(--textM);min-width:28px;text-align:right}
+.sel{padding:4px 8px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;color:var(--text);font-family:var(--fb);font-size:.82rem}
+.sel:focus{outline:none;border-color:var(--accent)}
+.ti{padding:4px 8px;background:var(--surfD);border:1px solid var(--brd);border-radius:4px;color:var(--text);font-family:var(--fb);font-size:.82rem;width:150px}
+.ti:focus{outline:none;border-color:var(--accent)}
+
+/* Strategy Selector */
+.stg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.sc{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;background:var(--surfD);border:2px solid var(--brd);border-radius:8px;cursor:pointer;transition:all .2s;text-align:center;font-family:var(--fb);color:var(--text)}
+.sc:hover{border-color:var(--brdL);background:var(--surfH)}
+.sc--a{border-color:var(--accent);background:var(--glow);box-shadow:0 0 20px var(--glow)}
+.sc__e{font-size:1.5rem}.sc__l{font-family:var(--fd);font-size:.78rem;font-weight:600}.sc__d{font-size:.65rem;color:var(--textD);line-height:1.3}
+
+/* Output Display */
+.out--e{min-height:200px;display:flex;align-items:center;justify-content:center}
+.es{text-align:center;padding:28px}
+.es__i{font-size:3rem;display:block;margin-bottom:14px;opacity:.5}
+.es__t{font-size:.88rem;color:var(--textM);max-width:280px;margin:0 auto;line-height:1.5}
+.sb{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--brd);align-items:center}
+.hb{display:flex;gap:4px;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-family:var(--fd);font-weight:600;letter-spacing:.05em}
+.hb--healthy{background:rgba(74,222,128,.15);color:var(--health)}
+.hb--wounded{background:rgba(245,158,11,.15);color:var(--warn)}
+.hb--critical{background:rgba(239,68,68,.15);color:var(--danger);animation:pulse 1.5s ease-in-out infinite}
+.hb--unconscious{background:rgba(107,114,128,.15);color:var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.rb{display:flex;gap:8px;font-size:.72rem;color:var(--textD)}
+.stb{font-size:.7rem;color:var(--textM);text-transform:capitalize;margin-left:auto}
+.wb{margin-bottom:14px;padding:8px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px}
+.wi{display:flex;gap:8px;align-items:flex-start;padding:4px 0;font-size:.8rem;color:var(--warn)}
+.sgr{display:flex;flex-direction:column;gap:12px}
+.scard{padding:14px;background:var(--surfD);border:1px solid var(--brd);border-left:4px solid var(--brd);border-radius:8px;transition:all .2s}
+.scard:hover{background:var(--surfH)}
+.scard--critical{animation:pulse 2s ease-in-out infinite}
+.scard__tr{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.scard__ai{font-size:1rem;flex-shrink:0}
+.scard__t{font-family:var(--fd);font-size:.88rem;font-weight:600;flex:1}
+.scard__p{font-size:.66rem;font-family:var(--fd);font-weight:500;flex-shrink:0}
+.scard__cb{position:relative;height:4px;background:var(--surf);border-radius:2px;overflow:hidden;margin-bottom:8px}
+.cbar{height:100%;border-radius:2px;transition:width .3s}
+.clbl{position:absolute;right:0;top:-14px;font-size:.58rem;color:var(--textM)}
+.scard__d{font-size:.8rem;color:var(--textD);line-height:1.5;margin-bottom:8px}
+.scard__c{font-size:.72rem;color:var(--accentD);margin-bottom:8px}
+.scard__r{margin-top:8px;padding:8px;background:var(--surf);border-radius:4px;font-size:.76rem;color:var(--textD);font-style:italic;line-height:1.5}
+.gat{text-align:right;font-size:.66rem;color:var(--textM);margin-top:14px}
+.info-line{font-size:.78rem;color:var(--textD);margin-top:4px}
+.tab-bar{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--brd)}
+.tab{padding:8px 16px;font-family:var(--fd);font-size:.78rem;font-weight:500;color:var(--textM);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .2s}
+.tab:hover{color:var(--text)}.tab--a{color:var(--accent);border-bottom-color:var(--accent)}
+
+@media(max-width:400px){.abs{grid-template-columns:repeat(3,1fr)}.cbd{grid-template-columns:1fr}.stg{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useCallback, useRef } = React;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constants
+// ═══════════════════════════════════════════════════════════════════════════
+const CONDITIONS = ["blinded","charmed","deafened","exhaustion","frightened","grappled","incapacitated","invisible","paralyzed","petrified","poisoned","prone","restrained","stunned","unconscious"];
+const TERRAIN_TYPES = ["open","forest","dungeon","urban","aquatic","mountain","desert","underground"];
+const STRATEGY_PROFILES = ["safe","aggressive","balanced","random"];
+const STRATEGY_INFO = {
+  safe:       { emoji: "🛡️", label: "Playing it Safe", desc: "Prioritize healing, defense, and resource conservation" },
+  aggressive: { emoji: "⚔️", label: "Aggressive",      desc: "Maximize damage output and offensive action economy" },
+  balanced:   { emoji: "⚖️", label: "Balanced",        desc: "Weigh risk and reward based on current situation" },
+  random:     { emoji: "🎲", label: "Chaos Mode",      desc: "Unpredictable suggestions for wild and creative play" },
+};
+const PSTYLES = {
+  critical: { color: "var(--danger)", icon: "🔴", label: "Critical" },
+  high:     { color: "var(--warn)",   icon: "🟠", label: "High" },
+  medium:   { color: "var(--accent)", icon: "🟡", label: "Medium" },
+  low:      { color: "var(--muted)",  icon: "⚪", label: "Low" },
+};
+const AICONS = { action: "⚡", bonus_action: "💨", reaction: "🔄", free: "✨", none: "📋" };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Character Parser — handles D&D Beyond JSON exports
+// ═══════════════════════════════════════════════════════════════════════════
+function computeModifier(score) { return Math.floor((score - 10) / 2); }
+function computeProfBonus(level) { return Math.ceil(level / 4) + 1; }
+
+const ABILITY_NAMES = ["strength","dexterity","constitution","intelligence","wisdom","charisma"];
+
+function mapEquipType(t) {
+  const n = (t || "").toLowerCase();
+  if (n.includes("weapon") || n.includes("sword") || n.includes("bow")) return "weapon";
+  if (n.includes("armor") || n.includes("mail")) return "armor";
+  if (n.includes("shield")) return "shield";
+  if (n.includes("tool") || n.includes("kit")) return "tool";
+  return "item";
+}
+
+function parseCharacterSheet(input) {
+  let raw;
+  if (typeof input === "string") {
+    try { raw = JSON.parse(input); } catch (e) { return { success: false, errors: ["Invalid JSON: " + e.message + ". Check your export file."] }; }
+  } else { raw = input; }
+
+  const errors = [];
+  if (!raw.name) errors.push("Missing character name.");
+  if (!raw.classes || !Array.isArray(raw.classes) || raw.classes.length === 0) errors.push("At least one class is required.");
+  if (!raw.stats || !Array.isArray(raw.stats) || raw.stats.length !== 6) errors.push("Exactly 6 ability scores required.");
+  if (!raw.baseHitPoints && raw.baseHitPoints !== 0) errors.push("Base hit points required.");
+  if (errors.length > 0) return { success: false, errors: ["Character sheet validation failed:", ...errors] };
+
+  try {
+    const scores = {};
+    ABILITY_NAMES.forEach((name, i) => {
+      const v = raw.stats[i]?.value ?? 10;
+      scores[name] = { name, score: v, modifier: computeModifier(v) };
+    });
+
+    const classes = raw.classes.map(c => ({
+      name: c.definition?.name || c.name || "Unknown",
+      level: c.level || 1,
+      subclass: c.subclassDefinition?.name || c.subclass || undefined,
+      hitDie: c.definition?.hitDie || c.hitDie || 8,
+    }));
+    const totalLevel = classes.reduce((s, c) => s + c.level, 0);
+    const maxHP = raw.overrideHitPoints ?? ((raw.baseHitPoints || 0) + (raw.bonusHitPoints || 0));
+
+    const spellSlots = (raw.spellSlots || []).map(s => ({
+      level: s.level, total: (s.available || 0) + (s.used || 0), used: s.used || 0, remaining: s.available || 0,
+    }));
+
+    const spells = (raw.spells || []).map(s => {
+      const d = s.definition || s;
+      return {
+        name: d.name, level: d.level || 0, school: d.school || "Unknown",
+        castingTime: d.castingTime || "1 action", range: d.range || "Self",
+        components: d.components || "", duration: d.duration || "Instantaneous",
+        description: d.description || "", damage: d.damage || undefined,
+        healing: d.healing || undefined,
+        isConcentration: d.concentration || false, isRitual: d.ritual || false,
+        isPrepared: s.prepared !== undefined ? s.prepared : true,
+      };
+    });
+
+    const equipment = (raw.inventory || []).map(item => {
+      const d = item.definition || item;
+      return {
+        name: d.name, type: mapEquipType(d.type || "item"),
+        equipped: item.equipped || false, quantity: item.quantity || 1,
+        damage: d.damage?.diceString || d.damage || undefined,
+        damageType: d.damage?.damageType || d.damageType || undefined,
+        armorClass: d.armorClass || undefined,
+        properties: d.properties || [], description: d.description || "",
+      };
+    });
+
+    const features = (raw.feats || []).map(f => ({
+      name: f.name, source: f.source || "Feat", description: f.description || "",
+      usesTotal: f.usesTotal, usesRemaining: f.usesRemaining, rechargeOn: f.rechargeOn,
+    }));
+
+    const conditions = (raw.conditions || []).filter(c => CONDITIONS.includes(c.toLowerCase())).map(c => c.toLowerCase());
+    const ac = raw.armorClass ?? (10 + scores.dexterity.modifier);
+
+    return { success: true, character: {
+      id: crypto.randomUUID(), name: raw.name, race: raw.race || "Unknown",
+      classes, level: totalLevel, abilityScores: scores,
+      hitPoints: { max: maxHP, current: maxHP - (raw.removedHitPoints || 0), temporary: raw.temporaryHitPoints || 0 },
+      armorClass: ac, speed: raw.speed || 30, proficiencyBonus: computeProfBonus(totalLevel),
+      spellSlots, spells, equipment, features, skills: [], conditions,
+      inspiration: raw.inspiration || false,
+      deathSaves: { successes: raw.deathSaves?.successCount || 0, failures: raw.deathSaves?.failCount || 0 },
+    }};
+  } catch (e) { return { success: false, errors: ["Failed to process character: " + e.message] }; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Demo Characters
+// ═══════════════════════════════════════════════════════════════════════════
+function createDemoWizard() {
+  return { name: "Elara Moonwhisper", race: "High Elf",
+    classes: [{ definition: { name: "Wizard", hitDie: 6 }, level: 5, subclassDefinition: { name: "School of Evocation" } }],
+    stats: [{ value: 8 },{ value: 14 },{ value: 12 },{ value: 18 },{ value: 13 },{ value: 10 }],
+    baseHitPoints: 28, bonusHitPoints: 0, temporaryHitPoints: 0, removedHitPoints: 0,
+    armorClass: 12, speed: 30,
+    spellSlots: [{ level: 1, used: 0, available: 4 },{ level: 2, used: 0, available: 3 },{ level: 3, used: 0, available: 2 }],
+    spells: [
+      { definition: { name: "Fire Bolt", level: 0, school: "Evocation", range: "120 ft", description: "Hurl fire.", damage: "2d10", concentration: false, ritual: false }, prepared: true },
+      { definition: { name: "Cure Wounds", level: 1, school: "Evocation", range: "Touch", description: "Heal a creature.", healing: "1d8+4", concentration: false, ritual: false }, prepared: true },
+      { definition: { name: "Shield", level: 1, school: "Abjuration", castingTime: "1 reaction", range: "Self", description: "+5 AC until next turn.", concentration: false, ritual: false }, prepared: true },
+      { definition: { name: "Magic Missile", level: 1, school: "Evocation", range: "120 ft", description: "Three darts of force.", damage: "3d4+3", concentration: false, ritual: false }, prepared: true },
+      { definition: { name: "Fireball", level: 3, school: "Evocation", range: "150 ft", description: "20ft sphere of flame.", damage: "8d6", concentration: false, ritual: false }, prepared: true },
+      { definition: { name: "Mirror Image", level: 2, school: "Illusion", range: "Self", description: "Three illusory duplicates.", concentration: false, ritual: false }, prepared: true },
+    ],
+    inventory: [
+      { definition: { name: "Quarterstaff", type: "Simple Weapon", damage: { diceString: "1d6", damageType: "Bludgeoning" }, properties: ["versatile"] }, equipped: true, quantity: 1 },
+      { definition: { name: "Potion of Healing", type: "Potion", damage: null, properties: [], description: "Recover 2d4+2 HP." }, equipped: false, quantity: 2 },
+      { definition: { name: "Dagger", type: "Simple Weapon", damage: { diceString: "1d4", damageType: "Piercing" }, properties: ["finesse","light","thrown"] }, equipped: true, quantity: 1 },
+    ],
+    feats: [{ name: "Arcane Recovery", source: "Wizard", description: "Recover spell slots on a short rest.", usesTotal: 1, usesRemaining: 1, rechargeOn: "long" }],
+    conditions: [], inspiration: false, deathSaves: { successCount: 0, failCount: 0 },
+  };
+}
+
+function createDemoFighter() {
+  return { name: "Thorn Ironfist", race: "Dwarf",
+    classes: [{ definition: { name: "Fighter", hitDie: 10 }, level: 5, subclassDefinition: { name: "Champion" } }],
+    stats: [{ value: 18 },{ value: 12 },{ value: 16 },{ value: 8 },{ value: 10 },{ value: 11 }],
+    baseHitPoints: 52, bonusHitPoints: 0, temporaryHitPoints: 0, removedHitPoints: 0,
+    armorClass: 18, speed: 25,
+    spellSlots: [], spells: [],
+    inventory: [
+      { definition: { name: "Greataxe", type: "Martial Weapon", damage: { diceString: "1d12", damageType: "Slashing" }, properties: ["heavy","two-handed"] }, equipped: true, quantity: 1 },
+      { definition: { name: "Handaxe", type: "Martial Weapon", damage: { diceString: "1d6", damageType: "Slashing" }, properties: ["light","thrown"] }, equipped: true, quantity: 2 },
+      { definition: { name: "Potion of Healing", type: "Potion", damage: null, properties: [] }, equipped: false, quantity: 3 },
+    ],
+    feats: [
+      { name: "Action Surge", source: "Fighter", description: "Take one additional action on your turn.", usesTotal: 1, usesRemaining: 1, rechargeOn: "short" },
+      { name: "Second Wind", source: "Fighter", description: "Regain 1d10+5 HP as a bonus action.", usesTotal: 1, usesRemaining: 1, rechargeOn: "short" },
+    ],
+    conditions: [], inspiration: false, deathSaves: { successCount: 0, failCount: 0 },
+  };
+}
+
+function createDefaultGameState(c) {
+  return { currentHP: c.hitPoints.current, temporaryHP: c.hitPoints.temporary, activeConditions: [], spellSlotsUsed: {}, concentratingOn: null, featuresUsed: [], equipmentBroken: [], initiativeRoll: null, roundNumber: 1, inCombat: false, enemyCount: 0, allyCount: 0, terrainType: "open", notes: "" };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Suggestion Engine
+// ═══════════════════════════════════════════════════════════════════════════
+const WEIGHTS = {
+  safe:       { heal: 1.8, dmg: 0.6, def: 1.5, util: 1.2, retreat: 1.4 },
+  aggressive: { heal: 0.5, dmg: 1.8, def: 0.7, util: 0.8, retreat: 0.3 },
+  balanced:   { heal: 1.0, dmg: 1.0, def: 1.0, util: 1.0, retreat: 1.0 },
+  random:     { heal: 1.0, dmg: 1.0, def: 1.0, util: 1.0, retreat: 1.0 },
+};
+
+function assessHealth(c, gs) {
+  const pct = c.hitPoints.max > 0 ? Math.round((gs.currentHP / c.hitPoints.max) * 100) : 0;
+  let status = "healthy";
+  if (gs.currentHP <= 0) status = "unconscious";
+  else if (pct <= 25) status = "critical";
+  else if (pct <= 50) status = "wounded";
+  return { status, hpPercentage: pct, hasTemporaryHP: gs.temporaryHP > 0, activeConditionsCount: gs.activeConditions.length, isConcentrating: !!gs.concentratingOn };
+}
+
+function summarizeResources(c, gs) {
+  let total = 0, highest = null;
+  (c.spellSlots || []).forEach(s => {
+    const r = Math.max(0, s.total - (gs.spellSlotsUsed[s.level] || 0));
+    total += r;
+    if (r > 0 && (highest === null || s.level > highest)) highest = s.level;
+  });
+  const potions = (c.equipment || []).filter(e => e.name.toLowerCase().includes("potion") && e.name.toLowerCase().includes("healing") && !gs.equipmentBroken.includes(e.name)).reduce((s, e) => s + e.quantity, 0);
+  const features = (c.features || []).filter(f => !gs.featuresUsed.includes(f.name)).length;
+  return { totalSpellSlotsRemaining: total, highestSlotAvailable: highest, featuresAvailable: features, healthPotionsAvailable: potions };
+}
+
+function hasSlot(c, gs, minLvl) {
+  return (c.spellSlots || []).some(s => s.level >= minLvl && s.total - (gs.spellSlotsUsed[s.level] || 0) > 0);
+}
+
+function generateSuggestions({ character: c, gameState: gs, strategy }) {
+  const health = assessHealth(c, gs);
+  const res = summarizeResources(c, gs);
+  const w = WEIGHTS[strategy];
+  let suggestions = [];
+  const mk = (s) => ({ id: crypto.randomUUID(), ...s });
+
+  // Healing potions
+  if (res.healthPotionsAvailable > 0 && health.hpPercentage < 50)
+    suggestions.push(mk({ title: "Use Healing Potion", description: `Drink a healing potion. ${res.healthPotionsAvailable} remaining.`, reasoning: health.status === "critical" ? "Critically wounded—heal now to avoid going down." : "HP below half. Restore health to survive incoming damage.", category: "item", priority: health.status === "critical" ? "critical" : "high", confidence: Math.min(100, Math.max(0, Math.round((health.status === "critical" ? 95 : 70) * w.heal))), actionCost: "action", resourceCost: "1 potion" }));
+
+  // Healing spells
+  (c.spells || []).filter(s => s.isPrepared && s.level > 0 && (s.name.includes("Cure") || s.name.includes("Heal"))).forEach(sp => {
+    if (hasSlot(c, gs, sp.level) && health.hpPercentage < 50)
+      suggestions.push(mk({ title: `Cast ${sp.name}`, description: `Restore HP. Range: ${sp.range}.`, reasoning: `HP at ${health.hpPercentage}%—healing is advisable.`, category: "spell", priority: health.status === "critical" ? "critical" : "high", confidence: Math.min(100, Math.max(0, Math.round((health.status === "critical" ? 90 : 65) * w.heal))), actionCost: "action", resourceCost: `Level ${sp.level} slot` }));
+  });
+
+  // Weapon attacks
+  (c.equipment || []).filter(e => e.type === "weapon" && e.equipped && !gs.equipmentBroken.includes(e.name)).forEach(wpn =>
+    suggestions.push(mk({ title: `Attack with ${wpn.name}`, description: `Weapon attack. Damage: ${wpn.damage || "varies"} ${wpn.damageType || ""}.`, reasoning: "Weapon attacks cost no resources and are always available.", category: "action", priority: "medium", confidence: Math.min(100, Math.max(0, Math.round(60 * w.dmg))), actionCost: "action" })));
+
+  // Offensive spells
+  (c.spells || []).filter(s => s.isPrepared && s.damage && (s.level === 0 || hasSlot(c, gs, s.level))).forEach(sp => {
+    const isC = sp.level === 0;
+    suggestions.push(mk({ title: `Cast ${sp.name}`, description: `${sp.damage} ${sp.school} damage. Range: ${sp.range}. ${sp.isConcentration ? "(Concentration)" : ""}`, reasoning: isC ? "Cantrips are free and scale with level." : `Level ${sp.level} slot for significant damage.`, category: "spell", priority: isC ? "medium" : "high", confidence: Math.min(100, Math.max(0, Math.round((isC ? 55 : 70) * w.dmg))), actionCost: "action", resourceCost: isC ? undefined : `Level ${sp.level} slot` }));
+  });
+
+  // Dodge
+  if (gs.inCombat && health.hpPercentage < 40)
+    suggestions.push(mk({ title: "Take the Dodge Action", description: "All attacks against you have disadvantage until your next turn.", reasoning: "At low HP, surviving the round is more valuable than dealing damage.", category: "action", priority: "high", confidence: Math.min(100, Math.max(0, Math.round(75 * w.def))), actionCost: "action" }));
+
+  // Disengage
+  if (gs.inCombat && health.status === "critical")
+    suggestions.push(mk({ title: "Disengage and Retreat", description: "Move away without provoking opportunity attacks.", reasoning: "Critical HP—create distance to survive.", category: "movement", priority: "critical", confidence: Math.min(100, Math.max(0, Math.round(80 * w.retreat))), actionCost: "action" }));
+
+  // Defensive spells
+  (c.spells || []).filter(s => s.isPrepared && (s.name.includes("Shield") || s.name.includes("Mirror Image") || s.name.includes("Blur") || s.name.includes("Mage Armor"))).forEach(sp => {
+    if (sp.level === 0 || hasSlot(c, gs, sp.level))
+      suggestions.push(mk({ title: `Cast ${sp.name}`, description: sp.description.slice(0, 100), reasoning: "Defensive magic reduces incoming damage and improves survivability.", category: "spell", priority: "medium", confidence: Math.min(100, Math.max(0, Math.round(65 * w.def))), actionCost: sp.name === "Shield" ? "reaction" : "action", resourceCost: sp.level > 0 ? `Level ${sp.level} slot` : undefined }));
+  });
+
+  // Strategic warnings
+  if (health.isConcentrating && health.hpPercentage < 30)
+    suggestions.push(mk({ title: "⚠️ Concentration at Risk", description: `Concentrating on ${gs.concentratingOn}. Each hit forces a CON save.`, reasoning: "At low HP, you're likely to fail concentration saves. Consider if the spell is still worth it.", category: "warning", priority: "high", confidence: 90, actionCost: "none" }));
+  if (res.totalSpellSlotsRemaining > 0 && res.totalSpellSlotsRemaining <= 2)
+    suggestions.push(mk({ title: "Conserve Spell Slots", description: `Only ${res.totalSpellSlotsRemaining} slot(s) left. Prioritize cantrips and weapons.`, reasoning: "Save your last slots for emergencies or critical moments.", category: "warning", priority: "medium", confidence: 85, actionCost: "none" }));
+  if (gs.inCombat && gs.enemyCount > gs.allyCount + 1)
+    suggestions.push(mk({ title: "Outnumbered—Mind Positioning", description: `Facing ${gs.enemyCount} enemies with ${gs.allyCount} allies. Avoid being surrounded.`, reasoning: "When outnumbered, area control and positioning matter more than single-target damage.", category: "strategy", priority: "high", confidence: 75, actionCost: "none" }));
+
+  // Unused features
+  (c.features || []).filter(f => f.usesRemaining && f.usesRemaining > 0 && !gs.featuresUsed.includes(f.name)).forEach(f =>
+    suggestions.push(mk({ title: `Use ${f.name}`, description: f.description.slice(0, 120), reasoning: `${f.usesRemaining} use(s) remaining. ${f.rechargeOn === "short" ? "Recharges on short rest." : "Recharges on long rest."}`, category: "action", priority: "medium", confidence: 60, actionCost: "free", resourceCost: `${f.usesRemaining}/${f.usesTotal} uses` })));
+
+  // Random shuffle
+  if (strategy === "random") {
+    for (let i = suggestions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [suggestions[i], suggestions[j]] = [suggestions[j], suggestions[i]]; }
+    suggestions = suggestions.map(s => ({ ...s, confidence: Math.floor(Math.random() * 60) + 20 }));
+  }
+
+  const po = { critical: 0, high: 1, medium: 2, low: 3 };
+  suggestions.sort((a, b) => { const d = (po[a.priority] || 2) - (po[b.priority] || 2); return d !== 0 ? d : b.confidence - a.confidence; });
+
+  const warnings = [];
+  if (health.status === "unconscious") warnings.push("Character is unconscious! Allies must stabilize or heal you.");
+  if (health.status === "critical") warnings.push("Critical HP—prioritize survival above all else.");
+  if (gs.activeConditions.length > 0) warnings.push("Active conditions: " + gs.activeConditions.join(", ") + ". These may limit your actions.");
+
+  return { suggestions: suggestions.slice(0, 8), strategyProfile: strategy, characterName: c.name, healthAssessment: health, resourceSummary: res, warnings, generatedAt: new Date().toISOString() };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// React Components
+// ═══════════════════════════════════════════════════════════════════════════
+
+function SuggestionCard({ s }) {
+  const [exp, setExp] = useState(false);
+  const ps = PSTYLES[s.priority] || PSTYLES.medium;
+  return (
+    <div className={`scard ${s.priority === "critical" ? "scard--critical" : ""}`} style={{ borderLeftColor: ps.color }}>
+      <div className="scard__tr">
+        <span className="scard__ai">{AICONS[s.actionCost] || "📋"}</span>
+        <h3 className="scard__t">{s.title}</h3>
+        <span className="scard__p" style={{ color: ps.color }}>{ps.icon} {ps.label}</span>
+      </div>
+      <div className="scard__cb"><div className="cbar" style={{ width: `${s.confidence}%`, backgroundColor: ps.color }} /><span className="clbl">{s.confidence}%</span></div>
+      <p className="scard__d">{s.description}</p>
+      {s.resourceCost && <div className="scard__c">Cost: {s.resourceCost}</div>}
+      <button className="btn btn--g btn--t" onClick={() => setExp(!exp)}>{exp ? "Hide reasoning ▲" : "Show reasoning ▼"}</button>
+      {exp && <div className="scard__r">{s.reasoning}</div>}
+    </div>
+  );
+}
+
+function App() {
+  const [char, setChar] = useState(null);
+  const [gs, setGs] = useState(null);
+  const [strategy, setStrategy] = useState("balanced");
+  const [result, setResult] = useState(null);
+  const [importErrors, setImportErrors] = useState([]);
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pasteContent, setPasteContent] = useState("");
+  const fileRef = useRef(null);
+
+  const loadChar = useCallback((data) => {
+    setImportErrors([]);
+    const r = parseCharacterSheet(data);
+    if (r.success) { setChar(r.character); setGs(createDefaultGameState(r.character)); setResult(null); }
+    else setImportErrors(r.errors);
+  }, []);
+
+  const loadDemo = useCallback((factory) => {
+    const raw = factory();
+    const r = parseCharacterSheet(raw);
+    if (r.success) { setChar(r.character); setGs(createDefaultGameState(r.character)); setResult(null); setImportErrors([]); }
+  }, []);
+
+  const clearChar = useCallback(() => { setChar(null); setGs(null); setResult(null); setImportErrors([]); }, []);
+  const updateGs = useCallback((u) => setGs(p => p ? { ...p, ...u } : p), []);
+  const resetGs = useCallback(() => { if (char) { setGs(createDefaultGameState(char)); setResult(null); } }, [char]);
+  const generate = useCallback(() => { if (char && gs) setResult(generateSuggestions({ character: char, gameState: gs, strategy })); }, [char, gs, strategy]);
+
+  const toggleCondition = useCallback((cond) => {
+    setGs(p => { if (!p) return p; const cur = p.activeConditions; return { ...p, activeConditions: cur.includes(cond) ? cur.filter(x => x !== cond) : [...cur, cond] }; });
+  }, []);
+
+  const handleFile = useCallback((file) => {
+    if (!file.name.endsWith(".json")) { setImportErrors(["Please upload a .json file."]); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => { if (typeof e.target.result === "string") loadChar(e.target.result); };
+    reader.onerror = () => setImportErrors(["Failed to read file."]);
+    reader.readAsText(file);
+  }, [loadChar]);
+
+  const hpPct = char && char.hitPoints.max > 0 && gs ? Math.round((gs.currentHP / char.hitPoints.max) * 100) : 100;
+  const hpColor = hpPct > 50 ? "var(--health)" : hpPct > 25 ? "var(--warn)" : "var(--danger)";
+
+  return (
+    <div className="app">
+      <header className="hdr">
+        <h1>🐉 D&amp;D Advisor</h1>
+        <p>Strategic guidance for your adventure</p>
+      </header>
+
+      <main className="main">
+        {/* ─── Left Column: Character + State ─── */}
+        <div className="col col--in">
+          {!char ? (
+            <div className="card">
+              <h2 className="stitle">📜 Import Character</h2>
+
+              {!pasteMode ? (
+                <>
+                  <div className={`dz`}
+                    onClick={() => fileRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("dz--a"); }}
+                    onDragLeave={(e) => e.currentTarget.classList.remove("dz--a")}
+                    onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("dz--a"); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
+                    <div className="dz__i">⚔️</div>
+                    <p className="dz__t">Drop your D&amp;D Beyond JSON export here</p>
+                    <p className="dz__h">or click to browse files</p>
+                    <input ref={fileRef} type="file" accept=".json" className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                  </div>
+                  <div className="acts">
+                    <button className="btn btn--s" onClick={() => setPasteMode(true)}>Paste JSON</button>
+                    <button className="btn btn--a" onClick={() => loadDemo(createDemoWizard)}>Demo: Wizard</button>
+                    <button className="btn btn--a" onClick={() => loadDemo(createDemoFighter)}>Demo: Fighter</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <textarea className="paste-area" rows={10} value={pasteContent}
+                    onChange={(e) => setPasteContent(e.target.value)}
+                    placeholder='Paste your D&D Beyond JSON character export here...' />
+                  <div className="acts">
+                    <button className="btn btn--p" disabled={!pasteContent.trim()}
+                      onClick={() => { loadChar(pasteContent.trim()); setPasteContent(""); setPasteMode(false); }}>Import</button>
+                    <button className="btn btn--s" onClick={() => { setPasteMode(false); setPasteContent(""); }}>Back</button>
+                  </div>
+                </>
+              )}
+
+              {importErrors.length > 0 && (
+                <div className="error-box">
+                  <strong className="error-box__title">Import Issues:</strong>
+                  <ul className="error-box__list">{importErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Character Summary */}
+              <div className="card">
+                <div className="summary__hdr">
+                  <div>
+                    <h2 className="summary__name">{char.name}</h2>
+                    <p className="summary__cls">{char.race} · {char.classes.map(c => `${c.name}${c.subclass ? ` (${c.subclass})` : ""} ${c.level}`).join(" / ")}</p>
+                  </div>
+                  <button className="btn btn--g" onClick={clearChar}>✕</button>
+                </div>
+                <div className="summary__stats">
+                  {[["HP", `${gs?.currentHP || 0}/${char.hitPoints.max}`],["AC", char.armorClass],["Level", char.level],["Prof", `+${char.proficiencyBonus}`],["Speed", `${char.speed}ft`]].map(([l, v]) => (
+                    <div key={l} className="pill"><span className="pill__l">{l}</span><span className="pill__v">{v}</span></div>
+                  ))}
+                </div>
+                <div className="abs">
+                  {Object.values(char.abilityScores).map(a => (
+                    <div key={a.name} className="ab">
+                      <span className="ab__n">{a.name.slice(0,3).toUpperCase()}</span>
+                      <span className="ab__s">{a.score}</span>
+                      <span className="ab__m">{a.modifier >= 0 ? "+" : ""}{a.modifier}</span>
+                    </div>
+                  ))}
+                </div>
+                {char.spells.length > 0 && <p className="info-line">{char.spells.filter(s=>s.isPrepared).length} spells prepared · {char.spellSlots.reduce((s,sl)=>s+sl.remaining,0)} slots</p>}
+                {char.equipment.filter(e=>e.equipped).length > 0 && <p className="info-line">Equipped: {char.equipment.filter(e=>e.equipped).map(e=>e.name).join(", ")}</p>}
+              </div>
+
+              {/* Game State */}
+              {gs && (
+                <div className="card">
+                  <div className="shdr">
+                    <h2 className="stitle">⚡ Game State</h2>
+                    <button className="btn btn--g btn--t" onClick={resetGs}>Reset</button>
+                  </div>
+
+                  <div className="sg">
+                    <div className="sl"><span>Hit Points</span><span className="sv" style={{color:hpColor}}>{gs.currentHP} / {char.hitPoints.max}{gs.temporaryHP > 0 && <span style={{color:"var(--info)",fontSize:".8rem"}}> (+{gs.temporaryHP} temp)</span>}</span></div>
+                    <input type="range" className="hps" min={0} max={char.hitPoints.max} value={gs.currentHP}
+                      onChange={e=>updateGs({currentHP:+e.target.value})}
+                      style={{background:`linear-gradient(to right, ${hpColor} ${hpPct}%, var(--surfD) ${hpPct}%)`}} />
+                    <div className="hpq">
+                      {[-5,-1,1,5].map(d=>(
+                        <button key={d} className={`btn btn--t ${d>0?"btn--hl":""}`}
+                          onClick={()=>updateGs({currentHP:Math.max(0,Math.min(char.hitPoints.max,gs.currentHP+d))})}>{d>0?"+":""}{d}</button>
+                      ))}
+                    </div>
+                    <div className="sl" style={{marginTop:8,fontSize:".78rem"}}><span>Temp HP</span>
+                      <input className="ni" type="number" min={0} max={999} value={gs.temporaryHP}
+                        onChange={e=>updateGs({temporaryHP:Math.max(0,+e.target.value||0)})} />
+                    </div>
+                  </div>
+
+                  <div className="sg">
+                    <label className="tgl"><input type="checkbox" checked={gs.inCombat} onChange={e=>updateGs({inCombat:e.target.checked})} /><span className="tsw"/><span>In Combat</span></label>
+                    {gs.inCombat && (
+                      <div className="cbd">
+                        {[["Round","roundNumber",1],["Enemies","enemyCount",0],["Allies","allyCount",0],["Initiative","initiativeRoll",1]].map(([l,k,mn])=>(
+                          <label key={k} className="sl" style={{fontSize:".78rem"}}>{l}<input className="ni" type="number" min={mn}
+                            value={gs[k]||""} placeholder="—"
+                            onChange={e=>updateGs({[k]:e.target.value ? Math.max(mn,+e.target.value) : k==="initiativeRoll"?null:mn})} /></label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="sg">
+                    <h3 className="sg__t">Conditions</h3>
+                    <div className="cg">
+                      {CONDITIONS.map(c=>(
+                        <button key={c} className={`ct ${gs.activeConditions.includes(c)?"ct--a":""}`} onClick={()=>toggleCondition(c)}>{c}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {char.spellSlots.length > 0 && (
+                    <div className="sg">
+                      <h3 className="sg__t">Spell Slots</h3>
+                      <div className="ssg">
+                        {char.spellSlots.map(sl=>{
+                          const used = gs.spellSlotsUsed[sl.level]||0;
+                          const rem = Math.max(0, sl.total - used);
+                          return (
+                            <div key={sl.level} className="ssr">
+                              <span className="ssl">Lvl {sl.level}</span>
+                              <div className="ssp">
+                                {Array.from({length:sl.total},(_,i)=>(
+                                  <button key={i} className={`sp ${i<rem?"sp--a":"sp--u"}`}
+                                    onClick={()=>{
+                                      const newUsed = i < rem ? sl.total - i : sl.total - i - 1;
+                                      updateGs({spellSlotsUsed:{...gs.spellSlotsUsed,[sl.level]:Math.max(0,Math.min(sl.total,newUsed))}});
+                                    }} />
+                                ))}
+                              </div>
+                              <span className="ssc">{rem}/{sl.total}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="sg">
+                    <label className="sl">Terrain
+                      <select className="sel" value={gs.terrainType} onChange={e=>updateGs({terrainType:e.target.value})}>
+                        {TERRAIN_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="sg">
+                    <label className="sl">Concentrating On
+                      <input className="ti" value={gs.concentratingOn||""} onChange={e=>updateGs({concentratingOn:e.target.value||null})} placeholder="None" />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ─── Right Column: Strategy + Output ─── */}
+        <div className="col col--out">
+          <div className="card">
+            <h2 className="stitle">🧠 Strategy</h2>
+            <div className="stg">
+              {STRATEGY_PROFILES.map(p=>{
+                const info = STRATEGY_INFO[p];
+                return (
+                  <button key={p} className={`sc ${p===strategy?"sc--a":""}`} onClick={()=>setStrategy(p)}>
+                    <span className="sc__e">{info.emoji}</span>
+                    <span className="sc__l">{info.label}</span>
+                    <span className="sc__d">{info.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button className="btn btn--p btn--lg" onClick={generate} disabled={!char}>✨ Generate Advice</button>
+          </div>
+
+          <div className={`card ${!result?"out--e":""}`}>
+            {!result ? (
+              <div className="es">
+                <span className="es__i">🔮</span>
+                <p className="es__t">Import a character and set your game state, then generate advice to see suggestions here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="sb">
+                  <div className={`hb hb--${result.healthAssessment.status}`}>
+                    <span>{result.healthAssessment.status.toUpperCase()}</span>
+                    <span>{result.healthAssessment.hpPercentage}% HP</span>
+                  </div>
+                  <div className="rb">
+                    <span>🔷 {result.resourceSummary.totalSpellSlotsRemaining} slots</span>
+                    {result.resourceSummary.healthPotionsAvailable > 0 && <span>🧪 {result.resourceSummary.healthPotionsAvailable}</span>}
+                  </div>
+                  <div className="stb">Strategy: <strong>{result.strategyProfile}</strong></div>
+                </div>
+                {result.warnings.length > 0 && <div className="wb">{result.warnings.map((w,i)=><div key={i} className="wi"><span>⚠️</span><span>{w}</span></div>)}</div>}
+                <div className="sgr">{result.suggestions.map(s=><SuggestionCard key={s.id} s={s} />)}</div>
+                <p className="gat">Generated at {new Date(result.generatedAt).toLocaleTimeString()}</p>
+              </>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <footer className="ftr">
+        D&amp;D Advisor v1.0 · Not affiliated with Wizards of the Coast ·
+        Runs entirely in your browser — no server needed
+      </footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
