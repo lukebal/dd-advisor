@@ -153,6 +153,20 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tab:hover{color:var(--text)}.tab--a{color:var(--accent);border-bottom-color:var(--accent)}
 
 @media(max-width:400px){.abs{grid-template-columns:repeat(3,1fr)}.cbd{grid-template-columns:1fr}.stg{grid-template-columns:1fr}}
+.loading-overlay{display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px;text-align:center}
+.loading-spinner{width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:.85rem;color:var(--textD);font-style:italic}
+.loading-sub{font-size:.72rem;color:var(--textM)}
+.pdf-review{margin-top:14px;padding:14px;background:var(--surfD);border:1px solid var(--brd);border-radius:8px}
+.pdf-review__title{font-family:var(--fd);font-size:.85rem;color:var(--accent);margin-bottom:10px}
+.pdf-review__grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:.78rem;margin-bottom:12px}
+.pdf-review__label{color:var(--textM)}.pdf-review__value{color:var(--text);font-weight:500}
+.pdf-review__warn{font-size:.72rem;color:var(--warn);margin-bottom:10px;padding:8px;background:rgba(245,158,11,.08);border-radius:4px;line-height:1.4}
+.pdf-review__actions{display:flex;gap:8px}
+.file-type-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.65rem;font-family:var(--fd);letter-spacing:.05em;text-transform:uppercase}
+.file-type-badge--pdf{background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)}
+.file-type-badge--json{background:rgba(74,222,128,.15);color:var(--health);border:1px solid rgba(74,222,128,.3)}
 </style>
 </head>
 <body>
@@ -161,6 +175,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 
 <script type="text/babel">
 const { useState, useCallback, useRef } = React;
@@ -278,6 +294,395 @@ function parseCharacterSheet(input) {
       deathSaves: { successes: raw.deathSaves?.successCount || 0, failures: raw.deathSaves?.failCount || 0 },
     }};
   } catch (e) { return { success: false, errors: ["Failed to process character: " + e.message] }; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PDF Character Sheet Parser
+// ═══════════════════════════════════════════════════════════════════════════
+// D&D Beyond PDFs have a consistent layout. We extract all text via pdf.js,
+// then use regex patterns to locate ability scores, HP, AC, class/level,
+// equipment, and spells. Because PDF text extraction isn't perfectly ordered,
+// we search the entire text for each field rather than assuming line order.
+
+/**
+ * Extracts all text content from a PDF file using pdf.js.
+ * Returns an array of strings, one per page.
+ */
+async function extractPdfText(arrayBuffer) {
+  if (typeof pdfjsLib === "undefined") {
+    throw new Error("PDF.js library failed to load. Check your internet connection.");
+  }
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    // Collect items with their x/y positions for spatial reasoning
+    const items = content.items.map(item => ({
+      text: item.str,
+      x: Math.round(item.transform[4]),
+      y: Math.round(item.transform[5]),
+    }));
+    pages.push(items);
+  }
+  return pages;
+}
+
+/**
+ * Flattens page items into lines by grouping items with similar Y coordinates.
+ * PDF text items aren't always in reading order, so we sort by Y (descending)
+ * then X (ascending) to reconstruct line flow.
+ */
+function itemsToLines(items) {
+  if (!items.length) return [];
+  const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  let currentLine = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    // Items within 3 units of Y are on the same line
+    if (Math.abs(sorted[i].y - currentLine[0].y) < 3) {
+      currentLine.push(sorted[i]);
+    } else {
+      currentLine.sort((a, b) => a.x - b.x);
+      lines.push(currentLine.map(it => it.text).join(" ").trim());
+      currentLine = [sorted[i]];
+    }
+  }
+  if (currentLine.length) {
+    currentLine.sort((a, b) => a.x - b.x);
+    lines.push(currentLine.map(it => it.text).join(" ").trim());
+  }
+  return lines.filter(l => l.length > 0);
+}
+
+// Common D&D classes and races for fuzzy matching
+const DND_CLASSES = ["Barbarian","Bard","Cleric","Druid","Fighter","Monk","Paladin","Ranger","Rogue","Sorcerer","Warlock","Wizard","Artificer","Blood Hunter"];
+const DND_RACES = ["Human","Elf","High Elf","Wood Elf","Dark Elf","Drow","Dwarf","Hill Dwarf","Mountain Dwarf","Halfling","Lightfoot Halfling","Stout Halfling","Gnome","Rock Gnome","Forest Gnome","Deep Gnome","Half-Elf","Half-Orc","Tiefling","Dragonborn","Aasimar","Goliath","Tabaxi","Firbolg","Kenku","Lizardfolk","Triton","Goblin","Hobgoblin","Bugbear","Kobold","Orc","Yuan-Ti","Changeling","Kalashtar","Shifter","Warforged","Genasi","Tortle","Aarakocra","Harengon","Owlin","Fairy","Satyr","Leonin","Loxodon","Minotaur","Centaur","Vedalken","Simic Hybrid","Grung","Locathah","Verdan"];
+const DND_WEAPONS = { "Greataxe": "1d12", "Greatsword": "2d6", "Longsword": "1d8", "Shortsword": "1d6", "Rapier": "1d8", "Scimitar": "1d6", "Dagger": "1d4", "Handaxe": "1d6", "Javelin": "1d6", "Light Hammer": "1d4", "Mace": "1d6", "Quarterstaff": "1d6", "Sickle": "1d4", "Spear": "1d6", "Greatclub": "1d8", "Battleaxe": "1d8", "Flail": "1d8", "Glaive": "1d10", "Halberd": "1d10", "Lance": "1d12", "Maul": "2d6", "Morningstar": "1d8", "Pike": "1d10", "War Pick": "1d8", "Warhammer": "1d8", "Whip": "1d4", "Longbow": "1d8", "Shortbow": "1d6", "Light Crossbow": "1d8", "Heavy Crossbow": "1d10", "Hand Crossbow": "1d6", "Trident": "1d6", "Blowgun": "1" };
+const DAMAGE_SPELLS = { "Fire Bolt": "2d10", "Eldritch Blast": "1d10", "Sacred Flame": "2d8", "Toll the Dead": "2d8", "Chill Touch": "2d8", "Ray of Frost": "1d8", "Shocking Grasp": "2d8", "Acid Splash": "1d6", "Poison Spray": "2d12", "Magic Missile": "3d4+3", "Chromatic Orb": "3d8", "Thunderwave": "2d8", "Burning Hands": "3d6", "Guiding Bolt": "4d6", "Inflict Wounds": "3d10", "Scorching Ray": "6d6", "Shatter": "3d8", "Fireball": "8d6", "Lightning Bolt": "8d6", "Spirit Guardians": "3d8", "Spiritual Weapon": "1d8+mod" };
+const HEALING_SPELLS = ["Cure Wounds","Healing Word","Mass Cure Wounds","Mass Healing Word","Heal","Prayer of Healing","Aura of Vitality","Beacon of Hope","Life Transference","Regenerate","Power Word Heal"];
+const CONCENTRATION_SPELLS = ["Bless","Bane","Hex","Hunter's Mark","Haste","Slow","Fly","Concentration","Spirit Guardians","Spiritual Weapon","Hold Person","Hold Monster","Wall of Fire","Hypnotic Pattern","Faerie Fire","Entangle","Moonbeam","Call Lightning","Polymorph","Banishment","Greater Invisibility","Mirror Image","Blur","Stoneskin","Shield of Faith","Warding Bond","Silence","Darkness"];
+
+/**
+ * Parses extracted PDF text into a character data structure.
+ * Returns { success, character, warnings } where warnings lists fields
+ * that couldn't be parsed and were given defaults.
+ */
+function parsePdfText(allLines, allText) {
+  const warnings = [];
+  const num = (pattern, fallback) => {
+    const m = allText.match(pattern);
+    return m ? parseInt(m[1], 10) : (warnings.push(`Could not find: ${pattern.source}`), fallback);
+  };
+
+  // ── Character Name ──
+  // Usually the first prominent text. Try first few non-empty lines.
+  let name = "Unknown Adventurer";
+  for (const line of allLines.slice(0, 8)) {
+    const trimmed = line.trim();
+    // Skip lines that look like headers/labels
+    if (trimmed.length > 1 && trimmed.length < 40 &&
+        !trimmed.match(/^(armor|hit|speed|str|dex|con|int|wis|cha|class|race|level|proficiency|saving|skills|character)/i) &&
+        !trimmed.match(/^\d+$/) && trimmed.match(/[a-zA-Z]/)) {
+      name = trimmed;
+      break;
+    }
+  }
+
+  // ── Race ──
+  let race = "Unknown";
+  for (const r of DND_RACES) {
+    if (allText.toLowerCase().includes(r.toLowerCase())) { race = r; break; }
+  }
+
+  // ── Classes ──
+  const classEntries = [];
+  for (const cls of DND_CLASSES) {
+    // Match patterns like "Fighter 5", "Wizard Level 5", "Level 3 Rogue"
+    const patterns = [
+      new RegExp(cls + "\\s+(\\d{1,2})", "i"),
+      new RegExp(cls + "\\s+(?:Level|Lvl)\\s*(\\d{1,2})", "i"),
+      new RegExp("(?:Level|Lvl)\\s*(\\d{1,2})\\s+" + cls, "i"),
+    ];
+    for (const p of patterns) {
+      const m = allText.match(p);
+      if (m) {
+        classEntries.push({ name: cls, level: parseInt(m[1], 10), hitDie: getHitDie(cls) });
+        break;
+      }
+    }
+  }
+  // Fallback: if no class+level found, look for just class names
+  if (classEntries.length === 0) {
+    for (const cls of DND_CLASSES) {
+      if (allText.includes(cls)) {
+        classEntries.push({ name: cls, level: 1, hitDie: getHitDie(cls) });
+        warnings.push(`Found class "${cls}" but couldn't determine level — defaulting to 1.`);
+        break;
+      }
+    }
+  }
+  if (classEntries.length === 0) {
+    classEntries.push({ name: "Fighter", level: 1, hitDie: 10 });
+    warnings.push("Could not determine class — defaulting to Fighter 1.");
+  }
+
+  // ── Ability Scores ──
+  // D&D Beyond PDFs show scores as: STR 16 (+3) or separate columns
+  const scores = {};
+  const abilityPatterns = [
+    [/\bSTR(?:ENGTH)?\s*[:.]?\s*(\d{1,2})/i, "strength"],
+    [/\bDEX(?:TERITY)?\s*[:.]?\s*(\d{1,2})/i, "dexterity"],
+    [/\bCON(?:STITUTION)?\s*[:.]?\s*(\d{1,2})/i, "constitution"],
+    [/\bINT(?:ELLIGENCE)?\s*[:.]?\s*(\d{1,2})/i, "intelligence"],
+    [/\bWIS(?:DOM)?\s*[:.]?\s*(\d{1,2})/i, "wisdom"],
+    [/\bCHA(?:RISMA)?\s*[:.]?\s*(\d{1,2})/i, "charisma"],
+  ];
+  for (const [pattern, ability] of abilityPatterns) {
+    const m = allText.match(pattern);
+    if (m) {
+      const val = parseInt(m[1], 10);
+      if (val >= 1 && val <= 30) {
+        scores[ability] = { name: ability, score: val, modifier: computeModifier(val) };
+      }
+    }
+  }
+
+  // Also try to find six consecutive numbers (8-20 range) that could be ability scores
+  if (Object.keys(scores).length < 6) {
+    const sixNums = allText.match(/\b(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\b/);
+    if (sixNums) {
+      const vals = [sixNums[1],sixNums[2],sixNums[3],sixNums[4],sixNums[5],sixNums[6]].map(Number);
+      if (vals.every(v => v >= 1 && v <= 30)) {
+        ABILITY_NAMES.forEach((name, i) => {
+          if (!scores[name]) scores[name] = { name, score: vals[i], modifier: computeModifier(vals[i]) };
+        });
+      }
+    }
+  }
+
+  // Fill defaults for any missing
+  for (const name of ABILITY_NAMES) {
+    if (!scores[name]) {
+      scores[name] = { name, score: 10, modifier: 0 };
+      warnings.push(`Could not find ${name} score — defaulting to 10.`);
+    }
+  }
+
+  // ── HP, AC, Speed ──
+  const hp = num(/\b(?:Hit Points|HP|Max HP)[:\s]*(\d{1,3})/i, num(/\bhp\s+(\d{1,3})/i, 10));
+  const ac = num(/\b(?:Armor Class|AC)[:\s]*(\d{1,2})/i, 10 + scores.dexterity.modifier);
+  const speed = num(/\b(?:Speed|Walking)[:\s]*(\d{1,3})\s*(?:ft|feet)?/i, 30);
+
+  // ── Proficiency Bonus ──
+  const totalLevel = classEntries.reduce((s, c) => s + c.level, 0);
+  const profBonus = computeProfBonus(totalLevel);
+
+  // ── Spells ──
+  const spells = [];
+  // Look for known spell names in the text
+  const allSpellNames = [...Object.keys(DAMAGE_SPELLS), ...HEALING_SPELLS, ...CONCENTRATION_SPELLS,
+    "Shield", "Mage Armor", "Misty Step", "Counterspell", "Dispel Magic", "Feather Fall",
+    "Detect Magic", "Identify", "Find Familiar", "Invisibility", "Levitate", "Suggestion",
+    "Minor Illusion", "Prestidigitation", "Thaumaturgy", "Mending", "Light", "Guidance",
+    "Resistance", "Spare the Dying", "Message", "Mage Hand", "Dancing Lights",
+    "Thunderclap", "Booming Blade", "Green-Flame Blade", "Sword Burst",
+    "Armor of Agathys", "Hellish Rebuke", "Arms of Hadar", "Witch Bolt",
+    "Web", "Mirror Image", "Blur", "Flaming Sphere", "Cloud of Daggers",
+    "Revivify", "Beacon of Hope", "Mass Healing Word",
+  ];
+  const foundSpells = new Set();
+  for (const spellName of allSpellNames) {
+    if (allText.includes(spellName) && !foundSpells.has(spellName)) {
+      foundSpells.add(spellName);
+      const level = getSpellLevel(spellName);
+      spells.push({
+        name: spellName, level, school: "Unknown",
+        castingTime: "1 action", range: "Varies",
+        components: "", duration: "Varies",
+        description: spellName, damage: DAMAGE_SPELLS[spellName] || undefined,
+        healing: HEALING_SPELLS.includes(spellName) ? "varies" : undefined,
+        isConcentration: CONCENTRATION_SPELLS.includes(spellName),
+        isRitual: false, isPrepared: true,
+      });
+    }
+  }
+
+  // ── Spell Slots ──
+  // Try to parse "Spell Slots: 4/3/2" or "1st: 4, 2nd: 3, 3rd: 2" patterns
+  const spellSlots = [];
+  const slotPatterns = [
+    /1st[:\s]*(\d)/i, /2nd[:\s]*(\d)/i, /3rd[:\s]*(\d)/i,
+    /4th[:\s]*(\d)/i, /5th[:\s]*(\d)/i, /6th[:\s]*(\d)/i,
+    /7th[:\s]*(\d)/i, /8th[:\s]*(\d)/i, /9th[:\s]*(\d)/i,
+  ];
+  slotPatterns.forEach((p, i) => {
+    const m = allText.match(p);
+    if (m) {
+      const total = parseInt(m[1], 10);
+      if (total > 0) spellSlots.push({ level: i + 1, total, used: 0, remaining: total });
+    }
+  });
+  // Fallback: estimate spell slots from class and level
+  if (spellSlots.length === 0 && spells.length > 0) {
+    const estimatedSlots = estimateSpellSlots(classEntries);
+    spellSlots.push(...estimatedSlots);
+    if (estimatedSlots.length > 0) warnings.push("Spell slot counts were estimated from class/level.");
+  }
+
+  // ── Equipment ──
+  const equipment = [];
+  for (const [weaponName, damage] of Object.entries(DND_WEAPONS)) {
+    if (allText.includes(weaponName)) {
+      equipment.push({
+        name: weaponName, type: "weapon", equipped: true, quantity: 1,
+        damage, damageType: guessWeaponDamageType(weaponName),
+      });
+    }
+  }
+  // Look for potions
+  const potionMatch = allText.match(/(?:Potion(?:s)? of Healing)[\s\S]{0,20}?(?:x\s*)?(\d)?/i);
+  if (allText.toLowerCase().includes("potion of healing")) {
+    equipment.push({
+      name: "Potion of Healing", type: "item", equipped: false,
+      quantity: potionMatch && potionMatch[1] ? parseInt(potionMatch[1], 10) : 1,
+    });
+  }
+  // Look for armor mentions
+  for (const armor of ["Leather Armor","Studded Leather","Chain Shirt","Chain Mail","Scale Mail","Breastplate","Half Plate","Plate","Shield"]) {
+    if (allText.includes(armor)) {
+      equipment.push({ name: armor, type: armor === "Shield" ? "shield" : "armor", equipped: true, quantity: 1 });
+    }
+  }
+
+  // ── Features ──
+  const features = [];
+  const knownFeatures = {
+    "Action Surge": { source: "Fighter", desc: "Take one additional action.", uses: 1, recharge: "short" },
+    "Second Wind": { source: "Fighter", desc: "Regain 1d10+level HP as bonus action.", uses: 1, recharge: "short" },
+    "Rage": { source: "Barbarian", desc: "Enter a rage for bonus damage and resistance.", uses: 3, recharge: "long" },
+    "Sneak Attack": { source: "Rogue", desc: "Deal extra damage when you have advantage." },
+    "Cunning Action": { source: "Rogue", desc: "Dash, Disengage, or Hide as a bonus action." },
+    "Arcane Recovery": { source: "Wizard", desc: "Recover spell slots on a short rest.", uses: 1, recharge: "long" },
+    "Wild Shape": { source: "Druid", desc: "Transform into a beast.", uses: 2, recharge: "short" },
+    "Channel Divinity": { source: "Cleric/Paladin", desc: "Channel divine energy.", uses: 1, recharge: "short" },
+    "Ki Points": { source: "Monk", desc: "Fuel special martial techniques." },
+    "Bardic Inspiration": { source: "Bard", desc: "Grant an inspiration die to an ally.", uses: 3, recharge: "long" },
+    "Metamagic": { source: "Sorcerer", desc: "Alter your spells with sorcery points." },
+    "Eldritch Invocations": { source: "Warlock", desc: "Supernatural abilities from your patron." },
+    "Fighting Style": { source: "Fighter/Paladin/Ranger", desc: "A particular style of fighting." },
+    "Extra Attack": { source: "Martial", desc: "Attack twice when you take the Attack action." },
+    "Uncanny Dodge": { source: "Rogue", desc: "Halve an attack's damage as a reaction." },
+    "Evasion": { source: "Rogue/Monk", desc: "Take no damage on successful DEX saves." },
+    "Sculpt Spells": { source: "Evocation Wizard", desc: "Protect allies from your evocation spells." },
+    "Lay on Hands": { source: "Paladin", desc: "Heal with a pool of HP equal to 5 × level.", uses: 1, recharge: "long" },
+    "Divine Smite": { source: "Paladin", desc: "Expend a spell slot to deal extra radiant damage." },
+  };
+  for (const [featName, info] of Object.entries(knownFeatures)) {
+    if (allText.includes(featName)) {
+      features.push({
+        name: featName, source: info.source, description: info.desc,
+        usesTotal: info.uses, usesRemaining: info.uses,
+        rechargeOn: info.recharge,
+      });
+    }
+  }
+
+  const character = {
+    id: crypto.randomUUID(), name, race, classes: classEntries.map(c => ({...c})),
+    level: totalLevel, abilityScores: scores,
+    hitPoints: { max: hp, current: hp, temporary: 0 },
+    armorClass: ac, speed, proficiencyBonus: profBonus,
+    spellSlots, spells, equipment, features, skills: [], conditions: [],
+    inspiration: false, deathSaves: { successes: 0, failures: 0 },
+  };
+
+  return { success: true, character, warnings };
+}
+
+function getHitDie(cls) {
+  const dice = { Barbarian: 12, Fighter: 10, Paladin: 10, Ranger: 10, Bard: 8, Cleric: 8, Druid: 8, Monk: 8, Rogue: 8, Warlock: 8, Artificer: 8, "Blood Hunter": 10, Wizard: 6, Sorcerer: 6 };
+  return dice[cls] || 8;
+}
+
+function getSpellLevel(name) {
+  const cantrips = ["Fire Bolt","Eldritch Blast","Sacred Flame","Toll the Dead","Chill Touch","Ray of Frost","Shocking Grasp","Acid Splash","Poison Spray","Minor Illusion","Prestidigitation","Thaumaturgy","Mending","Light","Guidance","Resistance","Spare the Dying","Message","Mage Hand","Dancing Lights","Thunderclap","Booming Blade","Green-Flame Blade","Sword Burst"];
+  if (cantrips.includes(name)) return 0;
+  const lvl1 = ["Magic Missile","Shield","Mage Armor","Cure Wounds","Healing Word","Guiding Bolt","Inflict Wounds","Thunderwave","Burning Hands","Detect Magic","Identify","Find Familiar","Chromatic Orb","Feather Fall","Hellish Rebuke","Armor of Agathys","Arms of Hadar","Witch Bolt","Hex","Hunter's Mark","Bless","Bane","Shield of Faith","Command","Faerie Fire","Entangle","Goodberry"];
+  if (lvl1.includes(name)) return 1;
+  const lvl2 = ["Scorching Ray","Misty Step","Invisibility","Suggestion","Shatter","Mirror Image","Blur","Web","Flaming Sphere","Cloud of Daggers","Levitate","Hold Person","Spiritual Weapon","Moonbeam","Darkness","Silence","Warding Bond"];
+  if (lvl2.includes(name)) return 2;
+  const lvl3 = ["Fireball","Lightning Bolt","Counterspell","Dispel Magic","Haste","Slow","Fly","Spirit Guardians","Revivify","Beacon of Hope","Mass Healing Word","Hypnotic Pattern","Call Lightning","Animate Dead"];
+  if (lvl3.includes(name)) return 3;
+  const lvl4 = ["Polymorph","Banishment","Greater Invisibility","Wall of Fire","Dimension Door","Ice Storm","Stoneskin"];
+  if (lvl4.includes(name)) return 4;
+  return 5; // Default higher level
+}
+
+function guessWeaponDamageType(name) {
+  const slash = ["Greataxe","Greatsword","Longsword","Shortsword","Scimitar","Handaxe","Sickle","Battleaxe","Glaive","Halberd","Whip"];
+  const pierce = ["Rapier","Dagger","Javelin","Spear","Pike","Lance","War Pick","Longbow","Shortbow","Light Crossbow","Heavy Crossbow","Hand Crossbow","Trident","Blowgun"];
+  if (slash.includes(name)) return "Slashing";
+  if (pierce.includes(name)) return "Piercing";
+  return "Bludgeoning";
+}
+
+function estimateSpellSlots(classes) {
+  // Simplified 5e spell slot table for full casters
+  const fullCasterSlots = {
+    1: [{l:1,n:2}], 2: [{l:1,n:3}], 3: [{l:1,n:4},{l:2,n:2}],
+    4: [{l:1,n:4},{l:2,n:3}], 5: [{l:1,n:4},{l:2,n:3},{l:3,n:2}],
+    6: [{l:1,n:4},{l:2,n:3},{l:3,n:3}], 7: [{l:1,n:4},{l:2,n:3},{l:3,n:3},{l:4,n:1}],
+    8: [{l:1,n:4},{l:2,n:3},{l:3,n:3},{l:4,n:2}], 9: [{l:1,n:4},{l:2,n:3},{l:3,n:3},{l:4,n:3},{l:5,n:1}],
+    10: [{l:1,n:4},{l:2,n:3},{l:3,n:3},{l:4,n:3},{l:5,n:2}],
+  };
+  const halfCasterSlots = {
+    2: [{l:1,n:2}], 3: [{l:1,n:3}], 4: [{l:1,n:3}],
+    5: [{l:1,n:4},{l:2,n:2}], 6: [{l:1,n:4},{l:2,n:2}],
+    7: [{l:1,n:4},{l:2,n:3}], 8: [{l:1,n:4},{l:2,n:3}],
+    9: [{l:1,n:4},{l:2,n:3},{l:3,n:2}], 10: [{l:1,n:4},{l:2,n:3},{l:3,n:2}],
+  };
+  const fullCasters = ["Wizard","Sorcerer","Cleric","Druid","Bard"];
+  const halfCasters = ["Paladin","Ranger","Artificer"];
+
+  for (const c of classes) {
+    if (fullCasters.includes(c.name)) {
+      const slots = fullCasterSlots[Math.min(c.level, 10)] || [];
+      return slots.map(s => ({ level: s.l, total: s.n, used: 0, remaining: s.n }));
+    }
+    if (halfCasters.includes(c.name)) {
+      const slots = halfCasterSlots[Math.min(c.level, 10)] || [];
+      return slots.map(s => ({ level: s.l, total: s.n, used: 0, remaining: s.n }));
+    }
+    if (c.name === "Warlock") {
+      const pactSlotLevel = Math.min(5, Math.ceil(c.level / 2));
+      const pactSlotCount = c.level < 2 ? 1 : c.level < 11 ? 2 : c.level < 17 ? 3 : 4;
+      return [{ level: pactSlotLevel, total: pactSlotCount, used: 0, remaining: pactSlotCount }];
+    }
+  }
+  return [];
+}
+
+/**
+ * Main entry point for PDF import. Reads the file, extracts text, parses it,
+ * and returns the same result format as the JSON parser.
+ */
+async function parsePdfFile(arrayBuffer) {
+  try {
+    const pages = await extractPdfText(arrayBuffer);
+    const allItems = pages.flat();
+    const allLines = pages.flatMap(itemsToLines);
+    const allText = allLines.join("\n");
+
+    if (allText.trim().length < 20) {
+      return { success: false, errors: ["The PDF appears to be empty or contains only images. D&D Beyond character sheet PDFs with selectable text are required."] };
+    }
+
+    const result = parsePdfText(allLines, allText);
+    return result;
+  } catch (err) {
+    return { success: false, errors: ["PDF parsing failed: " + err.message] };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -492,13 +897,54 @@ function App() {
     setGs(p => { if (!p) return p; const cur = p.activeConditions; return { ...p, activeConditions: cur.includes(cond) ? cur.filter(x => x !== cond) : [...cur, cond] }; });
   }, []);
 
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfReview, setPdfReview] = useState(null); // { character, warnings }
+
   const handleFile = useCallback((file) => {
-    if (!file.name.endsWith(".json")) { setImportErrors(["Please upload a .json file."]); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => { if (typeof e.target.result === "string") loadChar(e.target.result); };
-    reader.onerror = () => setImportErrors(["Failed to read file."]);
-    reader.readAsText(file);
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if (ext === "json") {
+      const reader = new FileReader();
+      reader.onload = (e) => { if (typeof e.target.result === "string") loadChar(e.target.result); };
+      reader.onerror = () => setImportErrors(["Failed to read file."]);
+      reader.readAsText(file);
+    } else if (ext === "pdf") {
+      setPdfParsing(true);
+      setImportErrors([]);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const result = await parsePdfFile(e.target.result);
+          if (result.success) {
+            setPdfReview({ character: result.character, warnings: result.warnings || [] });
+          } else {
+            setImportErrors(result.errors);
+          }
+        } catch (err) {
+          setImportErrors(["PDF parsing failed: " + err.message]);
+        }
+        setPdfParsing(false);
+      };
+      reader.onerror = () => { setImportErrors(["Failed to read PDF file."]); setPdfParsing(false); };
+      reader.readAsArrayBuffer(file);
+    } else {
+      setImportErrors(["Unsupported file type. Please upload a .json or .pdf file."]);
+    }
   }, [loadChar]);
+
+  const acceptPdfImport = useCallback(() => {
+    if (pdfReview) {
+      setChar(pdfReview.character);
+      setGs(createDefaultGameState(pdfReview.character));
+      setResult(null);
+      setPdfReview(null);
+      setImportErrors([]);
+    }
+  }, [pdfReview]);
+
+  const cancelPdfImport = useCallback(() => {
+    setPdfReview(null);
+  }, []);
 
   const hpPct = char && char.hitPoints.max > 0 && gs ? Math.round((gs.currentHP / char.hitPoints.max) * 100) : 100;
   const hpColor = hpPct > 50 ? "var(--health)" : hpPct > 25 ? "var(--warn)" : "var(--danger)";
@@ -517,7 +963,44 @@ function App() {
             <div className="card">
               <h2 className="stitle">📜 Import Character</h2>
 
-              {!pasteMode ? (
+              {pdfParsing ? (
+                <div className="loading-overlay">
+                  <div className="loading-spinner" />
+                  <p className="loading-text">Reading your character sheet PDF...</p>
+                  <p className="loading-sub">Extracting text and identifying stats, spells, and equipment</p>
+                </div>
+              ) : pdfReview ? (
+                <div className="pdf-review">
+                  <h3 className="pdf-review__title">📋 PDF Import Review</h3>
+                  <p style={{fontSize:".8rem",color:"var(--textD)",marginBottom:12}}>
+                    We extracted the following from your PDF. Please review before accepting.
+                  </p>
+                  <div className="pdf-review__grid">
+                    <span className="pdf-review__label">Name</span><span className="pdf-review__value">{pdfReview.character.name}</span>
+                    <span className="pdf-review__label">Race</span><span className="pdf-review__value">{pdfReview.character.race}</span>
+                    <span className="pdf-review__label">Class</span><span className="pdf-review__value">{pdfReview.character.classes.map(c=>`${c.name} ${c.level}`).join(" / ")}</span>
+                    <span className="pdf-review__label">HP</span><span className="pdf-review__value">{pdfReview.character.hitPoints.max}</span>
+                    <span className="pdf-review__label">AC</span><span className="pdf-review__value">{pdfReview.character.armorClass}</span>
+                    <span className="pdf-review__label">Speed</span><span className="pdf-review__value">{pdfReview.character.speed}ft</span>
+                    <span className="pdf-review__label">Abilities</span>
+                    <span className="pdf-review__value">{Object.values(pdfReview.character.abilityScores).map(a=>`${a.name.slice(0,3).toUpperCase()} ${a.score}`).join(", ")}</span>
+                    <span className="pdf-review__label">Spells</span><span className="pdf-review__value">{pdfReview.character.spells.length} found</span>
+                    <span className="pdf-review__label">Equipment</span><span className="pdf-review__value">{pdfReview.character.equipment.length} items</span>
+                    <span className="pdf-review__label">Features</span><span className="pdf-review__value">{pdfReview.character.features.length} found</span>
+                  </div>
+                  {pdfReview.warnings.length > 0 && (
+                    <div className="pdf-review__warn">
+                      ⚠️ {pdfReview.warnings.length} field(s) couldn't be parsed automatically and were given defaults. You can adjust these in the Game State panel after import.
+                      <ul style={{marginTop:6,paddingLeft:16}}>{pdfReview.warnings.slice(0,5).map((w,i)=><li key={i}>{w}</li>)}</ul>
+                      {pdfReview.warnings.length > 5 && <p style={{marginTop:4}}>...and {pdfReview.warnings.length-5} more</p>}
+                    </div>
+                  )}
+                  <div className="pdf-review__actions">
+                    <button className="btn btn--p" onClick={acceptPdfImport}>Accept &amp; Load Character</button>
+                    <button className="btn btn--s" onClick={cancelPdfImport}>Cancel</button>
+                  </div>
+                </div>
+              ) : !pasteMode ? (
                 <>
                   <div className={`dz`}
                     onClick={() => fileRef.current?.click()}
@@ -525,9 +1008,9 @@ function App() {
                     onDragLeave={(e) => e.currentTarget.classList.remove("dz--a")}
                     onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("dz--a"); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
                     <div className="dz__i">⚔️</div>
-                    <p className="dz__t">Drop your D&amp;D Beyond JSON export here</p>
-                    <p className="dz__h">or click to browse files</p>
-                    <input ref={fileRef} type="file" accept=".json" className="sr-only"
+                    <p className="dz__t">Drop your character sheet here</p>
+                    <p className="dz__h">Supports <span className="file-type-badge file-type-badge--pdf">PDF</span> and <span className="file-type-badge file-type-badge--json">JSON</span> from D&amp;D Beyond</p>
+                    <input ref={fileRef} type="file" accept=".json,.pdf" className="sr-only"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                   </div>
                   <div className="acts">

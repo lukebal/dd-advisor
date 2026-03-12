@@ -18,7 +18,9 @@ That's it — the entire app is a single HTML file with zero build step.
 
 ## Features
 
-- **Import characters** from D&D Beyond JSON exports (drag & drop or paste)
+- **Import characters** from D&D Beyond — supports both **PDF** and **JSON** exports
+- **PDF parsing** via Mozilla's pdf.js — extracts stats, spells, equipment, and features directly from your character sheet PDF
+- **Review step for PDFs** — shows what was parsed and flags any fields that needed defaults before you accept
 - **Two demo characters** built in (Wizard and Fighter)
 - **Interactive game state** — HP slider, spell slot pips, condition toggles, combat tracking
 - **Four strategy profiles** — Safe, Aggressive, Balanced, and Chaos Mode
@@ -28,9 +30,15 @@ That's it — the entire app is a single HTML file with zero build step.
 
 ## How to Use Your Own Character
 
+### From PDF (easiest)
 1. Go to [D&D Beyond](https://www.dndbeyond.com/) and open your character
-2. Export the character as JSON (or use a browser extension like "Beyond20")
-3. Drop the `.json` file onto the import zone, or paste the JSON directly
+2. Click the **PDF** export / print button to download your character sheet
+3. Drop the `.pdf` file onto the import zone or click to browse
+4. Review the parsed data and click "Accept & Load Character"
+
+### From JSON
+1. Export your character as JSON from D&D Beyond (or use a browser extension)
+2. Drop the `.json` file or paste the JSON directly
 
 ## Alternative Hosting
 
